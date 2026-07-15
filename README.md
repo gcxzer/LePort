@@ -2,7 +2,7 @@
 
 LePort converts robot datasets to LeRobot Dataset v3.
 
-| Dataset or ecosystem | Primary source representation | Conversion status |
+| Dataset | Source representation | status |
 |---|---|:---:|
 | robomimic | HDF5 | ✅ Supported |
 | ALOHA / Mobile ALOHA | Per-episode HDF5 | ✅ Supported |
