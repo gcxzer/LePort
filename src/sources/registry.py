@@ -209,9 +209,25 @@ def create_default_registry(*, discover_plugins: bool = True) -> AdapterRegistry
 
         return ManiSkillAdapter()
 
+    def libero_factory() -> SourceAdapter:
+        """Import the LIBERO adapter only when registry selection requests it."""
+
+        from .libero import LiberoAdapter
+
+        return LiberoAdapter()
+
+    def umi_factory() -> SourceAdapter:
+        """Import the UMI adapter without loading its storage dependencies during core startup."""
+
+        from .umi import UmiAdapter
+
+        return UmiAdapter()
+
     registry.register("aloha", aloha_factory, extra="aloha")
+    registry.register("libero", libero_factory, extra="libero")
     registry.register("maniskill", maniskill_factory, extra="maniskill")
     registry.register("robomimic", robomimic_factory, extra="robomimic")
+    registry.register("umi", umi_factory, extra="umi")
     if discover_plugins:
         registry.discover_plugins()
     return registry

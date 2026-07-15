@@ -295,7 +295,7 @@ def test_registry_api_and_cli_inspection_are_integrated(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     registry = create_default_registry(discover_plugins=False)
-    assert registry.names == ("aloha", "maniskill", "robomimic")
+    assert registry.names == ("aloha", "libero", "maniskill", "robomimic", "umi")
     assert registry.select(maniskill_file).name == "maniskill"
     assert registry.select(aloha_directory).name == "aloha"
     assert registry.select(robomimic_file).name == "robomimic"

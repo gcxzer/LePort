@@ -15,9 +15,11 @@ dependencies = [
 
 [project.optional-dependencies]
 aloha = ["h5py>=3.11,<4.0", "pillow>=11.0,<13.0"]
+libero = ["h5py>=3.11,<4.0"]
 maniskill = ["h5py>=3.11,<4.0"]
 maniskill-replay = ["mani-skill>=3.0.1,<4.0"]
 robomimic = ["h5py>=3.11,<4.0"]
+umi = ["imagecodecs>=2024.12.30,<2026.0", "zarr>=2.18.7,<3.0"]
 
 [project.scripts]
 leport = "leport.cli:main"
@@ -25,12 +27,14 @@ leport = "leport.cli:main"
 [dependency-groups]
 dev = [
     "h5py>=3.11,<4.0",
+    "imagecodecs>=2024.12.30,<2026.0",
     "mypy>=1.15,<2.0",
     "pillow>=11.0,<13.0",
     "pytest>=8.3,<10.0",
     "pytest-cov>=6.0,<8.0",
     "ruff>=0.11,<1.0",
     "types-pyyaml>=6.0,<7.0",
+    "zarr>=2.18.7,<3.0",
 ]
 
 [build-system]

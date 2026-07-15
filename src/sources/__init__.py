@@ -5,6 +5,7 @@ LeRobot datasets. Third-party adapter authors should import the stable protocol 
 """
 
 from .base import SOURCE_ADAPTER_API_VERSION, SourceAdapter
+from .libero import LiberoAdapter
 from .registry import AdapterRegistry, create_default_registry
 from .types import (
     DatasetInspection,
@@ -14,6 +15,7 @@ from .types import (
     SourceEpisode,
     SourceFrame,
 )
+from .umi import UmiAdapter
 
 __all__ = [
     "SOURCE_ADAPTER_API_VERSION",
@@ -21,9 +23,11 @@ __all__ = [
     "DatasetInspection",
     "EpisodeSelection",
     "FieldInspection",
+    "LiberoAdapter",
     "ProbeResult",
     "SourceAdapter",
     "SourceEpisode",
     "SourceFrame",
+    "UmiAdapter",
     "create_default_registry",
 ]

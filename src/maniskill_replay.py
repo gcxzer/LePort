@@ -134,9 +134,7 @@ def run_maniskill_replay(
     episodes = metadata.get("episodes") if isinstance(metadata.get("episodes"), list) else []
     first_episode = episodes[0] if episodes and isinstance(episodes[0], dict) else {}
     effective_control_mode = (
-        options.target_control_mode
-        or env_kwargs.get("control_mode")
-        or first_episode.get("control_mode")
+        options.target_control_mode or env_kwargs.get("control_mode") or first_episode.get("control_mode")
     )
     effective_backend = options.sim_backend or env_kwargs.get("sim_backend") or "physx_cpu"
     if effective_backend == "auto":
@@ -244,9 +242,7 @@ def run_maniskill_replay(
         output_json=output_hdf5.with_suffix(".json"),
         options=options,
         runtime_summary=(
-            replay_summary_lines[-1]
-            if replay_summary_lines
-            else (summary_lines[-1] if summary_lines else "")
+            replay_summary_lines[-1] if replay_summary_lines else (summary_lines[-1] if summary_lines else "")
         ),
     )
 

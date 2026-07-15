@@ -34,9 +34,7 @@ def _write_valid_replay_pair(path: Path) -> None:
         rgb[0, ...] = (10, 30, 50)
         rgb[1, ...] = (11, 30, 51)
         rgb[2, ...] = (12, 30, 52)
-        observations.create_group("sensor_data").create_group("base_camera").create_dataset(
-            "rgb", data=rgb
-        )
+        observations.create_group("sensor_data").create_group("base_camera").create_dataset("rgb", data=rgb)
         trajectory.create_group("env_states").create_group("actors").create_dataset(
             "cube", data=np.arange(9, dtype=np.float32).reshape(3, 3)
         )
@@ -193,9 +191,12 @@ def test_successful_replay_forwards_exact_options_preserves_input_and_validates_
         "reward_mode": "dense",
         "allow_failure": True,
     }
-    assert ManiSkillAdapter().inspect(result.output_hdf5).field(
-        "obs/sensor_data/base_camera/rgb"
-    ).image_candidate
+    assert (
+        ManiSkillAdapter()
+        .inspect(result.output_hdf5)
+        .field("obs/sensor_data/base_camera/rgb")
+        .image_candidate
+    )
 
 
 def test_replay_refuses_a_predictable_existing_output_before_runtime_start(
@@ -241,9 +242,7 @@ def test_replay_reports_process_exit_and_start_failures(
     long_diagnostics = "failure:" + "x" * 2_500
     monkeypatch.setattr(
         "leport.maniskill_replay.subprocess.run",
-        lambda command, **kwargs: subprocess.CompletedProcess(
-            command, 7, stdout="", stderr=long_diagnostics
-        ),
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 7, stdout="", stderr=long_diagnostics),
     )
     with pytest.raises(ReplayError, match="process failed") as exited:
         replay_maniskill(raw_maniskill_file)
@@ -269,9 +268,7 @@ def test_replay_rejects_an_invalid_generated_pair(
     def run_replay(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         with h5py.File(output, "w") as h5_file:
             h5_file.create_group("not-a-trajectory")
-        output.with_suffix(".json").write_text(
-            json.dumps({"env_info": {}, "episodes": []}), encoding="utf-8"
-        )
+        output.with_suffix(".json").write_text(json.dumps({"env_info": {}, "episodes": []}), encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, stdout="completed", stderr="")
 
     monkeypatch.setattr("leport.maniskill_replay.subprocess.run", run_replay)
@@ -395,11 +392,7 @@ def test_every_replay_requirement_and_scenario_has_automated_evidence() -> None:
     specification = (
         Path(__file__).parents[1] / "openspec/specs/maniskill-trajectory-replay/spec.md"
     ).read_text(encoding="utf-8")
-    assert set(requirement_tests) == set(
-        re.findall(r"^### Requirement: (.+)$", specification, re.MULTILINE)
-    )
-    assert set(scenario_tests) == set(
-        re.findall(r"^#### Scenario: (.+)$", specification, re.MULTILINE)
-    )
+    assert set(requirement_tests) == set(re.findall(r"^### Requirement: (.+)$", specification, re.MULTILINE))
+    assert set(scenario_tests) == set(re.findall(r"^#### Scenario: (.+)$", specification, re.MULTILINE))
     for test_name in (*requirement_tests.values(), *scenario_tests.values()):
         assert callable(globals().get(test_name)), test_name

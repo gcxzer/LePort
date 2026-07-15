@@ -9,6 +9,8 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pytest
+import zarr
+from imagecodecs.numcodecs import Jpegxl, register_codecs
 from leport.api import convert, create_plan
 from leport.conversion.plan import ConversionPlan
 from leport.sources import EpisodeSelection
@@ -74,6 +76,175 @@ def robomimic_file(tmp_path: Path) -> Path:
         mask.create_dataset("train", data=np.asarray([b"demo_0", b"demo_10"]))
         mask.create_dataset("valid", data=np.asarray([b"demo_2"]))
     return source
+
+
+def _write_libero_task_file(
+    path: Path,
+    *,
+    instruction: str,
+    demo_lengths: tuple[tuple[int, int], ...],
+    state_width: int,
+    offset: int,
+) -> None:
+    """Write a compact task file matching the official LIBERO robomimic-derived structure."""
+
+    with h5py.File(path, "w") as h5_file:
+        data = h5_file.create_group("data")
+        data.attrs["problem_info"] = json.dumps(
+            {"problem_name": path.stem, "language_instruction": instruction}
+        )
+        data.attrs["bddl_file_name"] = f"{path.stem}.bddl"
+        data.attrs["bddl_file_content"] = f"(define (problem {path.stem}))"
+        data.attrs["env_args"] = json.dumps(
+            {
+                "env_name": "LIBERO",
+                "env_kwargs": {"control_freq": 20, "camera_heights": 16, "camera_widths": 16},
+            }
+        )
+        data.attrs["macros_image_convention"] = "opengl"
+        data.attrs["num_demos"] = len(demo_lengths)
+        data.attrs["total"] = sum(length for _, length in demo_lengths)
+        for demo_index, length in demo_lengths:
+            episode = data.create_group(f"demo_{demo_index}")
+            episode.attrs["num_samples"] = length
+            episode.attrs["init_state"] = np.arange(5, dtype=np.float64) + offset + demo_index
+            episode.attrs["model_file"] = "<mujoco model='fixture'/>"
+            numeric_offset = float(offset + demo_index * 100)
+            episode.create_dataset(
+                "actions",
+                data=np.arange(length * 7, dtype=np.float64).reshape(length, 7) + numeric_offset,
+            )
+            episode.create_dataset(
+                "states",
+                data=(
+                    np.arange(length * state_width, dtype=np.float64).reshape(length, state_width)
+                    + numeric_offset
+                ),
+            )
+            episode.create_dataset(
+                "robot_states",
+                data=np.arange(length * 9, dtype=np.float64).reshape(length, 9) + numeric_offset,
+            )
+            episode.create_dataset("rewards", data=np.arange(length, dtype=np.float32))
+            episode.create_dataset("dones", data=np.zeros(length, dtype=np.bool_))
+            observations = episode.create_group("obs")
+            observations.create_dataset(
+                "ee_states",
+                data=np.arange(length * 6, dtype=np.float64).reshape(length, 6) + numeric_offset,
+            )
+            observations.create_dataset(
+                "gripper_states",
+                data=np.arange(length * 2, dtype=np.float64).reshape(length, 2) + numeric_offset,
+            )
+            observations.create_dataset(
+                "joint_states",
+                data=np.arange(length * 7, dtype=np.float64).reshape(length, 7) + numeric_offset,
+            )
+
+            # Row, column, and channel gradients expose flips, rotations, transposes, and channel swaps.
+            rows = np.arange(16, dtype=np.uint8)[:, None]
+            columns = np.arange(16, dtype=np.uint8)[None, :]
+            agentview = np.empty((length, 16, 16, 3), dtype=np.uint8)
+            wrist = np.empty((length, 16, 16, 3), dtype=np.uint8)
+            for frame_index in range(length):
+                agentview[frame_index, ..., 0] = rows + frame_index
+                agentview[frame_index, ..., 1] = columns + offset
+                agentview[frame_index, ..., 2] = 40 + demo_index
+                wrist[frame_index, ..., 0] = 120 + demo_index
+                wrist[frame_index, ..., 1] = rows + frame_index
+                wrist[frame_index, ..., 2] = columns + offset
+            observations.create_dataset("agentview_rgb", data=agentview)
+            observations.create_dataset("eye_in_hand_rgb", data=wrist)
+
+
+@pytest.fixture
+def libero_directory(tmp_path: Path) -> Path:
+    """Create a flat suite with lexical tasks, numeric demos, metadata, and schema drift."""
+
+    source = tmp_path / "libero_suite"
+    source.mkdir()
+    _write_libero_task_file(
+        source / "alpha_task_demo.hdf5",
+        instruction="place the red bowl on the plate",
+        demo_lengths=((0, 3), (2, 2), (10, 2)),
+        state_width=10,
+        offset=0,
+    )
+    _write_libero_task_file(
+        source / "beta_task_demo.hdf5",
+        instruction="close the upper drawer",
+        demo_lengths=((0, 4),),
+        state_width=12,
+        offset=50,
+    )
+    (source / "README.txt").write_text("ignored non-task entry\n", encoding="utf-8")
+    nested = source / "nested"
+    nested.mkdir()
+    _write_libero_task_file(
+        nested / "ignored_task_demo.hdf5",
+        instruction="this nested file must not be discovered",
+        demo_lengths=((0, 1),),
+        state_width=10,
+        offset=90,
+    )
+    return source
+
+
+@pytest.fixture
+def libero_file(libero_directory: Path) -> Path:
+    """Return one official-structure task file for single-file behavior tests."""
+
+    return libero_directory / "alpha_task_demo.hdf5"
+
+
+@pytest.fixture
+def malformed_libero_files(tmp_path: Path) -> dict[str, Path]:
+    """Create independent failures for metadata, catalog counts, and field alignment."""
+
+    source = tmp_path / "malformed_libero"
+    source.mkdir()
+    cases: dict[str, Path] = {}
+    for case in (
+        "missing_metadata",
+        "invalid_problem_json",
+        "missing_bddl",
+        "noncanonical_demo",
+        "num_demos_mismatch",
+        "num_samples_mismatch",
+        "field_length_mismatch",
+        "missing_actions",
+    ):
+        path = source / f"{case}_demo.hdf5"
+        _write_libero_task_file(
+            path,
+            instruction="valid instruction before mutation",
+            demo_lengths=((0, 2),),
+            state_width=10,
+            offset=0,
+        )
+        with h5py.File(path, "a") as h5_file:
+            data = h5_file["data"]
+            episode = data["demo_0"]
+            if case == "missing_metadata":
+                del data.attrs["problem_info"]
+            elif case == "invalid_problem_json":
+                data.attrs["problem_info"] = "{invalid"
+            elif case == "missing_bddl":
+                del data.attrs["bddl_file_name"]
+                del data.attrs["bddl_file_content"]
+            elif case == "noncanonical_demo":
+                data.move("demo_0", "demo_00")
+            elif case == "num_demos_mismatch":
+                data.attrs["num_demos"] = 2
+            elif case == "num_samples_mismatch":
+                episode.attrs["num_samples"] = 3
+            elif case == "field_length_mismatch":
+                del episode["obs/ee_states"]
+                episode["obs"].create_dataset("ee_states", data=np.zeros((1, 6), dtype=np.float64))
+            elif case == "missing_actions":
+                del episode["actions"]
+        cases[case] = path
+    return cases
 
 
 @pytest.fixture
@@ -497,4 +668,141 @@ def malformed_maniskill_pairs(tmp_path: Path) -> dict[str, Path]:
         encoding="utf-8",
     )
     sources["bad_environment_state_length"] = bad_environment_state
+    return sources
+
+
+def _write_umi_store(store: object) -> None:
+    """Write a compact processed UMI replay buffer with official field and codec conventions."""
+
+    register_codecs()
+    root = zarr.group(store=store, overwrite=True)
+    metadata = root.create_group("meta")
+    metadata.array(
+        "episode_ends",
+        np.asarray([3, 7, 9], dtype=np.int64),
+        chunks=(3,),
+        compressor=None,
+    )
+    data = root.create_group("data")
+    total_frames = 9
+    data.array(
+        "robot0_eef_pos",
+        np.arange(total_frames * 3, dtype=np.float32).reshape(total_frames, 3),
+        chunks=(4, 3),
+    )
+    data.array(
+        "robot0_eef_rot_axis_angle",
+        np.arange(total_frames * 3, dtype=np.float32).reshape(total_frames, 3) + 100,
+        chunks=(4, 3),
+    )
+    data.array(
+        "robot0_gripper_width",
+        np.arange(total_frames, dtype=np.float32).reshape(total_frames, 1) / 100,
+        chunks=(4, 1),
+    )
+    data.array(
+        "robot0_demo_start_pose",
+        np.zeros((total_frames, 6), dtype=np.float64),
+        chunks=(4, 6),
+    )
+    data.array(
+        "robot0_demo_end_pose",
+        np.ones((total_frames, 6), dtype=np.float64),
+        chunks=(4, 6),
+    )
+    data.array(
+        "robot1_eef_pos",
+        np.arange(total_frames * 3, dtype=np.float32).reshape(total_frames, 3) + 200,
+        chunks=(4, 3),
+    )
+    data.array(
+        "robot1_eef_rot_axis_angle",
+        np.arange(total_frames * 3, dtype=np.float32).reshape(total_frames, 3) + 300,
+        chunks=(4, 3),
+    )
+    data.array(
+        "robot1_gripper_width",
+        np.arange(total_frames, dtype=np.float32).reshape(total_frames, 1) / 50,
+        chunks=(4, 1),
+    )
+    # An explicit action remains an ordinary selectable field; conversion tests intentionally map
+    # the robot0 components instead to prove the adapter does not prefer or synthesize semantics.
+    data.array(
+        "action",
+        np.full((total_frames, 7), -5, dtype=np.float32),
+        chunks=(4, 7),
+    )
+
+    camera0 = np.empty((total_frames, 8, 10, 3), dtype=np.uint8)
+    camera1 = np.empty((total_frames, 8, 10, 3), dtype=np.uint8)
+    for frame_index in range(total_frames):
+        camera0[frame_index, ...] = (10 + frame_index, 30, 50 + frame_index)
+        camera1[frame_index, ...] = (100 + frame_index, 120, 140 + frame_index)
+    data.array(
+        "camera0_rgb",
+        camera0,
+        chunks=(1, 8, 10, 3),
+        compressor=Jpegxl(level=99, numthreads=1),
+    )
+    data.array(
+        "camera1_rgb",
+        camera1,
+        chunks=(1, 8, 10, 3),
+        compressor=None,
+    )
+
+
+@pytest.fixture
+def umi_directory(tmp_path: Path) -> Path:
+    """Create a processed UMI directory store with three cumulative episode slices."""
+
+    source = tmp_path / "dataset.zarr"
+    store = zarr.DirectoryStore(str(source))
+    try:
+        _write_umi_store(store)
+    finally:
+        store.close()
+    return source
+
+
+@pytest.fixture
+def umi_zip_file(tmp_path: Path) -> Path:
+    """Create the ZipStore representation emitted by the official UMI processing pipeline."""
+
+    source = tmp_path / "dataset.zarr.zip"
+    store = zarr.ZipStore(str(source), mode="w")
+    try:
+        _write_umi_store(store)
+    finally:
+        store.close()
+    return source
+
+
+@pytest.fixture
+def malformed_umi_sources(umi_directory: Path, tmp_path: Path) -> dict[str, Path]:
+    """Create isolated UMI failures for signature, boundary, layout, and alignment checks."""
+
+    import shutil
+
+    sources: dict[str, Path] = {}
+    for case in ("missing_robot", "missing_camera", "bad_boundaries", "length_mismatch", "nested"):
+        path = tmp_path / f"umi-{case}.zarr"
+        shutil.copytree(umi_directory, path)
+        root = zarr.open_group(str(path), mode="a")
+        if case == "missing_robot":
+            del root["data/robot0_eef_pos"]
+        elif case == "missing_camera":
+            del root["data/camera0_rgb"]
+            del root["data/camera1_rgb"]
+        elif case == "bad_boundaries":
+            root["meta/episode_ends"][:] = np.asarray([3, 3, 9], dtype=np.int64)
+        elif case == "length_mismatch":
+            root["data/robot0_demo_end_pose"].resize((8, 6))
+        else:
+            root["data"].create_group("nested")
+        sources[case] = path
+
+    misleading = tmp_path / "not-really.zarr.zip"
+    misleading.write_text("not a zip store", encoding="utf-8")
+    sources["misleading"] = misleading
     return sources

@@ -61,6 +61,31 @@ class RobomimicAdapter:
                         0,
                         f"The following episodes are missing actions: {', '.join(missing_actions)}",
                     )
+                # LIBERO is structurally robomimic-compatible. Its dedicated adapter has richer task
+                # semantics, so generic auto-detection yields only when the complete signature is valid.
+                if source.name.endswith("_demo.hdf5"):
+                    problem_info = _metadata_value(data_group.attrs.get("problem_info"))
+                    bddl_identity = any(
+                        isinstance(_metadata_value(data_group.attrs.get(key)), str)
+                        and bool(_metadata_value(data_group.attrs.get(key)).strip())
+                        for key in ("bddl_file_name", "bddl_file_content")
+                    )
+                    try:
+                        parsed_problem = json.loads(problem_info) if isinstance(problem_info, str) else None
+                    except json.JSONDecodeError:
+                        parsed_problem = None
+                    instruction = (
+                        parsed_problem.get("language_instruction")
+                        if isinstance(parsed_problem, dict)
+                        else None
+                    )
+                    if bddl_identity and isinstance(instruction, str) and instruction.strip():
+                        return ProbeResult(
+                            self.name,
+                            80,
+                            "Detected robomimic-compatible LIBERO signature; "
+                            "specialized adapter has priority",
+                        )
         except OSError as exc:
             return ProbeResult(self.name, 0, f"File is not readable HDF5: {exc}")
         return ProbeResult(

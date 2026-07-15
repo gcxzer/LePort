@@ -545,7 +545,7 @@ def test_aloha_dependencies_are_isolated_from_core_and_robomimic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry = create_default_registry(discover_plugins=False)
-    assert registry.names == ("aloha", "maniskill", "robomimic")
+    assert registry.names == ("aloha", "libero", "maniskill", "robomimic", "umi")
 
     # Adapter construction imports no HDF5 module; the actual probe provides the actionable error.
     monkeypatch.setitem(sys.modules, "h5py", None)
