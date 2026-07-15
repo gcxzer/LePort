@@ -1,0 +1,63 @@
+[project]
+name = "leport"
+version = "0.1.0"
+description = "Extensible robot dataset converters targeting LeRobot Dataset v3"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "LePort contributors" }]
+dependencies = [
+    "lerobot[dataset]>=0.6.0,<0.7.0",
+    "numpy>=1.26,<3.0",
+    "packaging>=24.0,<27.0",
+    "pyyaml>=6.0,<7.0",
+]
+
+[project.optional-dependencies]
+aloha = ["h5py>=3.11,<4.0", "pillow>=11.0,<13.0"]
+maniskill = ["h5py>=3.11,<4.0"]
+maniskill-replay = ["mani-skill>=3.0.1,<4.0"]
+robomimic = ["h5py>=3.11,<4.0"]
+
+[project.scripts]
+leport = "leport.cli:main"
+
+[dependency-groups]
+dev = [
+    "h5py>=3.11,<4.0",
+    "mypy>=1.15,<2.0",
+    "pillow>=11.0,<13.0",
+    "pytest>=8.3,<10.0",
+    "pytest-cov>=6.0,<8.0",
+    "ruff>=0.11,<1.0",
+    "types-pyyaml>=6.0,<7.0",
+]
+
+[build-system]
+requires = ["setuptools>=82,<84"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# Source files live directly in src/, while the installed package remains named leport. An explicit
+# package list prevents Setuptools from treating unrelated directories such as tests and docs as packages.
+packages = ["leport", "leport.conversion", "leport.sources", "leport.targets"]
+package-dir = { leport = "src" }
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+ignore_missing_imports = true
+warn_unused_ignores = false
