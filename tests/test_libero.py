@@ -521,7 +521,8 @@ def test_libero_notebook_uses_real_source_and_equivalent_cli_commands() -> None:
     for cell in notebook["cells"]:
         if cell["cell_type"] != "code":
             continue
-        assert cell["execution_count"] is None and cell["outputs"] == []
+        assert isinstance(cell["execution_count"], int)
+        assert all(output["output_type"] != "error" for output in cell["outputs"])
         source = "".join(cell["source"])
         compile(source, f"{notebook_path.name}:{cell['id']}", "exec")
         comment_lines = [line for line in source.splitlines() if line.lstrip().startswith("#")]

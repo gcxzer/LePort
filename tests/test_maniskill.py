@@ -565,8 +565,8 @@ def test_maniskill_notebook_uses_downloaded_source_and_compiles_optional_replay(
     assert len(cell_ids) == len(set(cell_ids))
     for cell in notebook["cells"]:
         if cell["cell_type"] == "code":
-            assert cell["execution_count"] is None
-            assert cell["outputs"] == []
+            assert isinstance(cell["execution_count"], int)
+            assert all(output["output_type"] != "error" for output in cell["outputs"])
 
     notebook_source = "\n".join("".join(cell["source"]) for cell in notebook["cells"])
     for cell in notebook["cells"]:
